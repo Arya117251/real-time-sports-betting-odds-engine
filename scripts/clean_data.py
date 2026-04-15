@@ -22,3 +22,4 @@ df.to_csv('data/clean_games.csv', index=False)
 
 print(f"Clean rows: {len(df)}")
 print(df.head())
+
