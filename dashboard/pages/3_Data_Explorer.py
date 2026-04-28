@@ -1,21 +1,29 @@
 import streamlit as st
 import pandas as pd
-from config import COLORS, DATA_PATH
+from utils import load_bq_data
+from config import COLORS
 
 # ── Data loading ──────────────────────────────────────────────────────────────
 
 @st.cache_data
-def load_data(path):
-    df = pd.read_csv(path)
+def load_data() -> pd.DataFrame:
+    """Fetch gold_game_features from BigQuery and add display-friendly derived columns.
+
+    Added columns:
+      - winner:  team name that won, derived from the home_win binary flag.
+      - score:   score_diff formatted as a signed string (e.g. '+14' or '-8').
+      - margin:  absolute value of score_diff, used for closest/biggest-blowout stats.
+    """
+    df = load_bq_data().copy()
     df["winner"] = df.apply(
-        lambda r: r["home_team"] if r["home_score"] > r["away_score"] else r["away_team"], axis=1
+        lambda r: r["home_team"] if r["home_win"] == 1 else r["away_team"], axis=1
     )
-    df["score"] = df["home_score"].astype(int).astype(str) + " - " + df["away_score"].astype(int).astype(str)
-    df["margin"] = (df["home_score"] - df["away_score"]).abs().astype(int)
-    df["total_points"] = (df["home_score"] + df["away_score"]).astype(int)
+    df["score"]  = df["score_diff"].apply(lambda x: f"+{x}" if x > 0 else str(x))
+    df["margin"] = df["score_diff"].abs()
     return df
 
-df = load_data(DATA_PATH)
+
+df = load_data()
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 
@@ -71,15 +79,15 @@ st.markdown("""
 
 # ── Section 1: Quick stats row ────────────────────────────────────────────────
 
-high_row   = df.loc[df["total_points"].idxmax()]
-close_row  = df.loc[df["margin"].idxmin()]
+close_row   = df.loc[df["margin"].idxmin()]
 blowout_row = df.loc[df["margin"].idxmax()]
+avg_margin  = df["margin"].mean()
 
 stats = [
-    ("TOTAL GAMES",        str(len(df))),
-    ("HIGHEST SCORING",    f"{high_row['away_team']} vs {high_row['home_team']} — {high_row['total_points']} pts"),
-    ("CLOSEST GAME",       f"{close_row['away_team']} vs {close_row['home_team']} — {close_row['margin']} pt"),
-    ("BIGGEST BLOWOUT",    f"{blowout_row['away_team']} vs {blowout_row['home_team']} — {blowout_row['margin']} pts"),
+    ("TOTAL GAMES",     str(len(df))),
+    ("AVG MARGIN",      f"{avg_margin:.1f} pts"),
+    ("CLOSEST GAME",    f"{close_row['away_team']} vs {close_row['home_team']} — {close_row['margin']} pt"),
+    ("BIGGEST BLOWOUT", f"{blowout_row['away_team']} vs {blowout_row['home_team']} — {blowout_row['margin']} pts"),
 ]
 
 for col, (label, value) in zip(st.columns(4), stats):
@@ -142,6 +150,7 @@ display_cols.update({
 table_df = filtered[[c for c in display_cols if c in filtered.columns]].rename(columns=display_cols)
 
 def style_table(styler):
+    """Apply dark-theme cell and header styling to the games table."""
     def winner_color(val):
         return "color: #00C853; font-weight: 600;"
 
@@ -210,6 +219,7 @@ records["Team"] = records.apply(
 )
 
 def style_records(styler):
+    """Apply dark-theme styling and a win-percentage bar to the team records table."""
     styler.set_properties(**{
         "background-color": "#1a1a1a",
         "color": "#FFFFFF",

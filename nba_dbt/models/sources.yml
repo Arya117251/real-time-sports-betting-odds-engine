@@ -1,0 +1,15 @@
+# Declares the bronze-layer raw_games table as a dbt source so that silver
+# models can reference it with {{ source('nba_bronze', 'raw_games') }} instead
+# of hard-coding the fully-qualified table name.
+version: 2
+
+sources:
+  - name: nba_bronze
+    database: sports-odds-engine
+    schema: nba_bronze
+    tables:
+      - name: raw_games
+        description: >
+          Raw NBA game records loaded from nba_games_raw.csv by
+          scripts/load_to_bigquery.py. Date is stored as STRING; numeric
+          columns may require casting before analysis.

@@ -2,27 +2,41 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from utils import load_models, predict_winner
-from config import COLORS, DATA_PATH
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+from utils import load_model, load_bq_data, predict_winner, FEATURES
+from config import COLORS
+
+TARGET = "home_win"
 
 # ── Session state & data loading ──────────────────────────────────────────────
 
-if "models" not in st.session_state:
-    st.session_state["models"] = load_models()
+if "model" not in st.session_state:
+    st.session_state["model"] = load_model()
 
-models = st.session_state["models"]
+model = st.session_state["model"]
 
 
-@st.cache_data
-def load_and_score(data_path):
-    df = pd.read_csv(data_path)
+def load_and_score() -> pd.DataFrame:
+    """Fetch gold_game_features from BigQuery and annotate each row with a prediction.
+
+    Adds three columns to the DataFrame:
+      - actual_winner:    home_team or away_team derived from the home_win flag.
+      - predicted_winner: model prediction using the row's numeric feature values.
+      - correct:          True when predicted_winner matches actual_winner.
+
+    Returns the annotated DataFrame.
+    """
+    df = load_bq_data().copy()
 
     def get_actual_winner(row):
-        return row["home_team"] if row["home_score"] > row["away_score"] else row["away_team"]
+        """Return the team name that won based on the home_win binary flag."""
+        return row["home_team"] if row["home_win"] == 1 else row["away_team"]
 
     def get_prediction(row):
+        """Run predict_winner against the row's feature values; return None on error."""
         try:
-            result = predict_winner(row["home_team"], row["away_team"], models)
+            result = predict_winner(row["home_team"], row["away_team"], row, model)
             return result["predicted_winner"]
         except Exception:
             return None
@@ -33,7 +47,74 @@ def load_and_score(data_path):
     return df
 
 
-df = load_and_score(DATA_PATH)
+df = load_and_score()
+
+
+def compute_test_metrics(model) -> dict:
+    """Reproduce the exact 80/20 train/test split from train_model.py and score the test set.
+
+    Uses the same FEATURES list and random_state=42 as scripts/train_model.py so
+    the test rows here are precisely the rows the model never saw during training.
+    Returns a dict with:
+      - accuracy:     float, held-out test accuracy
+      - wins/losses:  int counts of correct/incorrect predictions on the test set
+      - true_home, false_away, false_home, true_away: confusion matrix cell counts
+      - streak_label: current W/L streak derived from test rows ordered by date
+      - home_win_rate: fraction of test games won by the home team
+    """
+    raw = load_bq_data().dropna(subset=FEATURES + [TARGET]).copy()
+
+    X = raw[FEATURES]
+    y = raw[TARGET]
+    _, X_test, _, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+    y_pred = model.predict(X_test)
+    acc = accuracy_score(y_test, y_pred)
+
+    test_df = raw.loc[X_test.index].copy()
+    test_df["y_pred"] = y_pred
+    test_df["correct"] = y_pred == y_test.values
+    test_df = test_df.sort_values("date")
+
+    wins   = int(test_df["correct"].sum())
+    losses = len(test_df) - wins
+
+    # Confusion matrix cells: home = 1, away = 0
+    actual_home = test_df[TARGET] == 1
+    pred_home   = test_df["y_pred"] == 1
+    true_home   = int(( actual_home &  pred_home).sum())
+    false_away  = int(( actual_home & ~pred_home).sum())
+    false_home  = int((~actual_home &  pred_home).sum())
+    true_away   = int((~actual_home & ~pred_home).sum())
+
+    # Current streak (walk test rows from most recent backward)
+    streak_count, streak_type = 0, None
+    for correct in reversed(test_df["correct"].tolist()):
+        if streak_type is None:
+            streak_type = correct
+        if correct == streak_type:
+            streak_count += 1
+        else:
+            break
+    streak_label = f"🔥 {streak_count} W" if streak_type else f"❄️ {streak_count} L"
+
+    home_win_rate = float(test_df[TARGET].mean())
+
+    return dict(
+        accuracy=acc,
+        wins=wins,
+        losses=losses,
+        true_home=true_home,
+        false_away=false_away,
+        false_home=false_home,
+        true_away=true_away,
+        streak_label=streak_label,
+        home_win_rate=home_win_rate,
+        total=len(test_df),
+    )
+
+
+metrics = compute_test_metrics(model)
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 
@@ -99,34 +180,13 @@ st.markdown("""
 
 # ── Section 1: Top stats row ──────────────────────────────────────────────────
 
-total = len(df.dropna(subset=["predicted_winner"]))
-wins = int(df["correct"].sum())
-losses = total - wins
-accuracy = wins / total if total else 0
-
-home_wins_actual = int((df["home_score"] > df["away_score"]).sum())
-home_win_rate = home_wins_actual / total if total else 0
-
-# Streak: walk from the most recent game backwards
-streak_count = 0
-streak_type = None
-for correct in reversed(df["correct"].dropna().tolist()):
-    if streak_type is None:
-        streak_type = correct
-    if correct == streak_type:
-        streak_count += 1
-    else:
-        break
-
-streak_label = f"🔥 {streak_count} W" if streak_type else f"❄️ {streak_count} L"
-
 col1, col2, col3, col4 = st.columns(4)
 
 for col, value, label in [
-    (col1, f"{wins}-{losses}", "RECORD"),
-    (col2, f"{accuracy * 100:.1f}%", "ACCURACY"),
-    (col3, f"{home_win_rate * 100:.1f}%", "HOME WIN RATE"),
-    (col4, streak_label, "CURRENT STREAK"),
+    (col1, f"{metrics['wins']}-{metrics['losses']}", "RECORD"),
+    (col2, f"{metrics['accuracy'] * 100:.1f}%", "TEST ACCURACY"),
+    (col3, f"{metrics['home_win_rate'] * 100:.1f}%", "HOME WIN RATE"),
+    (col4, metrics["streak_label"], "CURRENT STREAK"),
 ]:
     with col:
         st.markdown(
@@ -147,14 +207,10 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-scored = df.dropna(subset=["predicted_winner"]).copy()
-scored["home_won_actual"] = scored["home_score"] > scored["away_score"]
-scored["home_won_pred"] = scored["predicted_winner"] == scored["home_team"]
-
-true_home  = int(( scored["home_won_actual"] &  scored["home_won_pred"]).sum())
-false_away = int(( scored["home_won_actual"] & ~scored["home_won_pred"]).sum())
-false_home = int((~scored["home_won_actual"] &  scored["home_won_pred"]).sum())
-true_away  = int((~scored["home_won_actual"] & ~scored["home_won_pred"]).sum())
+true_home  = metrics["true_home"]
+false_away = metrics["false_away"]
+false_home = metrics["false_home"]
+true_away  = metrics["true_away"]
 
 z = [[true_home, false_away],
      [false_home, true_away]]
@@ -181,6 +237,23 @@ fig.update_layout(
 )
 
 st.plotly_chart(fig, use_container_width=True)
+
+home_pred_rate = (true_home + false_home) / metrics["total"] if metrics["total"] else 0
+st.markdown(
+    f"<div style='background:#111111; border-left:3px solid #444444; border-radius:6px; "
+    f"padding:12px 16px; color:#888888; font-size:0.82rem; line-height:1.6;'>"
+    f"<span style='color:#FFFFFF; font-weight:600;'>Home-win bias:</span> "
+    f"The model predicted a home win in <span style='color:#FFFFFF;'>"
+    f"{home_pred_rate * 100:.0f}%</span> of test games, compared to an actual home win rate of "
+    f"<span style='color:#FFFFFF;'>{metrics['home_win_rate'] * 100:.0f}%</span>. "
+    f"This reflects the genuine home-court advantage in the training data — the model learns that "
+    f"home teams win more often and leans toward that prediction. As a result, it has stronger "
+    f"recall for home wins (true home: <span style='color:#00C853;'>{true_home}</span>) "
+    f"but misclassifies more away wins as home wins "
+    f"(false home: <span style='color:#FF1744;'>{false_home}</span>)."
+    f"</div>",
+    unsafe_allow_html=True,
+)
 
 st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
 

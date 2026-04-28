@@ -1,3 +1,7 @@
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
 COLORS = {
     "green": "#00C853",
     "red": "#FF1744",
@@ -7,23 +11,23 @@ COLORS = {
 }
 
 UPCOMING_GAMES = [
-    {"label": "Lakers @ Celtics - Tonight 7:00 PM", "home_team": "Celtics", "away_team": "Lakers", "time": "7:00 PM ET"},
-    {"label": "Warriors @ Heat - Tonight 9:30 PM", "home_team": "Heat", "away_team": "Warriors", "time": "9:30 PM ET"},
-    {"label": "Nuggets @ Bucks - Tomorrow 8:00 PM", "home_team": "Bucks", "away_team": "Nuggets", "time": "8:00 PM ET"},
+    {"label": "Lakers @ Celtics - Tonight 7:00 PM", "home_team": "Boston Celtics", "away_team": "Los Angeles Lakers", "time": "7:00 PM ET"},
+    {"label": "Warriors @ Heat - Tonight 9:30 PM", "home_team": "Miami Heat", "away_team": "Golden State Warriors", "time": "9:30 PM ET"},
+    {"label": "Nuggets @ Bucks - Tomorrow 8:00 PM", "home_team": "Milwaukee Bucks", "away_team": "Denver Nuggets", "time": "8:00 PM ET"},
 ]
 
 TEAM_NAMES = [
-    "Hawks", "Celtics", "Nets", "Hornets", "Bulls", "Cavaliers", "Mavericks",
-    "Nuggets", "Pistons", "Warriors", "Rockets", "Pacers", "Clippers", "Lakers",
-    "Grizzlies", "Heat", "Bucks", "Timberwolves", "Pelicans", "Knicks",
-    "Thunder", "Magic", "76ers", "Suns", "Trail Blazers", "Kings", "Spurs",
-    "Raptors", "Jazz", "Wizards"
+    "Atlanta Hawks", "Boston Celtics", "Brooklyn Nets", "Charlotte Hornets", "Chicago Bulls",
+    "Cleveland Cavaliers", "Dallas Mavericks", "Denver Nuggets", "Detroit Pistons",
+    "Golden State Warriors", "Houston Rockets", "Indiana Pacers", "Los Angeles Clippers",
+    "Los Angeles Lakers", "Memphis Grizzlies", "Miami Heat", "Milwaukee Bucks",
+    "Minnesota Timberwolves", "New Orleans Pelicans", "New York Knicks", "Oklahoma City Thunder",
+    "Orlando Magic", "Philadelphia 76ers", "Phoenix Suns", "Portland Trail Blazers",
+    "Sacramento Kings", "San Antonio Spurs", "Toronto Raptors", "Utah Jazz", "Washington Wizards"
 ]
 
 MODEL_PATHS = {
-    "model": "models/win_predictor.pkl",
-    "home_encoder": "models/home_encoder.pkl",
-    "away_encoder": "models/away_encoder.pkl"
+    "model": ROOT / "models" / "win_predictor.pkl",
 }
 
-DATA_PATH = "data/clean_games.csv"
+BQ_TABLE = "sports-odds-engine.nba_gold.gold_game_features"

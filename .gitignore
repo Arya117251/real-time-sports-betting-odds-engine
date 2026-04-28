@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+nba_dbt/target/
+nba_dbt/dbt_packages/
+nba_dbt/logs/
+nba_dbt/.user.yml

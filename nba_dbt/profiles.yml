@@ -1,0 +1,18 @@
+# Connection profile for the nba_dbt project.
+# Uses Application Default Credentials (oauth method) — run
+#   gcloud auth application-default login
+# before invoking dbt.
+#
+# Run dbt from inside the nba_dbt/ directory:
+#   dbt run --profiles-dir .
+nba_dbt:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth
+      project: sports-odds-engine
+      dataset: nba_dbt
+      location: US
+      threads: 4
+      timeout_seconds: 300

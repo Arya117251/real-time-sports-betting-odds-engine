@@ -1,16 +1,17 @@
 import streamlit as st
-from utils import load_models, predict_winner
+from utils import load_model, load_bq_data, get_team_latest_features, predict_winner
 from config import UPCOMING_GAMES, COLORS
 
 # ── Session state ─────────────────────────────────────────────────────────────
 
-if "models" not in st.session_state:
-    st.session_state["models"] = load_models()
+if "model" not in st.session_state:
+    st.session_state["model"] = load_model()
 
 if "bet_slip" not in st.session_state:
     st.session_state["bet_slip"] = []
 
-models = st.session_state["models"]
+model = st.session_state["model"]
+games_df = load_bq_data()
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 
@@ -75,7 +76,8 @@ st.markdown(
 )
 
 for game in UPCOMING_GAMES:
-    result = predict_winner(game["home_team"], game["away_team"], models)
+    features = get_team_latest_features(games_df, game["home_team"], game["away_team"])
+    result = predict_winner(game["home_team"], game["away_team"], features, model)
 
     home_prob = result["home_win_prob"]
     away_prob = result["away_win_prob"]
